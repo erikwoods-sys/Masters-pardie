@@ -29,12 +29,6 @@
       font-size: 1.1em;
       white-space: nowrap;
     }
-    .presented {
-      color: #1a472a;
-      font-size: 0.95em;
-      margin-top: 4px;
-      font-weight: bold;
-    }
     .stats-row {
       display: flex;
       justify-content: center;
@@ -131,11 +125,10 @@
       align-items: center;
       padding: 10px 16px 10px 20px;
       border-bottom: 1px solid #ccdacc;
+      gap: 8px;
     }
     .player-row:last-child { border-bottom: none; }
-    .player-row.counting {
-      background: rgba(255,255,255,0.6);
-    }
+    .player-row.counting { background: rgba(255,255,255,0.6); }
     .player-row.counting .player-name {
       color: #1a1a1a;
       font-weight: bold;
@@ -147,9 +140,22 @@
     }
     .player-row.not-counting .player-name { color: #666; }
     .player-row.not-counting .player-score { color: #aaa !important; }
-    .player-name { font-size: 0.9em; }
-    .player-score { font-weight: bold; font-size: 0.9em; }
-    .player-status { font-size: 0.8em; color: #aaa; }
+    .player-name { font-size: 0.9em; flex: 1; }
+    .player-rounds {
+      display: flex;
+      gap: 6px;
+      font-size: 0.75em;
+      color: #666;
+    }
+    .round-score {
+      background: rgba(0,0,0,0.06);
+      border-radius: 4px;
+      padding: 2px 5px;
+      min-width: 28px;
+      text-align: center;
+    }
+    .player-score { font-weight: bold; font-size: 0.9em; min-width: 32px; text-align: right; }
+    .player-status { font-size: 0.75em; color: #aaa; min-width: 28px; text-align: center; }
     .cut { opacity: 0.4; text-decoration: line-through; }
     .loading { text-align: center; padding: 50px; color: #666; }
     .error { text-align: center; padding: 50px; color: #cc3333; }
@@ -209,12 +215,14 @@ function processPlayerData(espnData) {
       const status = comp.status?.type?.name || '';
       const score = parseInt(comp.score) || 0;
       const madeCut = !status.includes('CUT');
+      const rounds = comp.linescores?.map(r => r.displayValue || '-') || [];
       players[lastName] = {
         fullName: name,
         score: madeCut ? score : CUT_SCORE * 2,
         madeCut,
         withdrawn: status.includes('WD'),
-        position: comp.status?.position?.displayName || '-'
+        position: comp.status?.position?.displayName || '-',
+        rounds
       };
       if (players[lastName].withdrawn) players[lastName].score = 999;
     });
@@ -226,13 +234,14 @@ function processPlayerData(espnData) {
 function calculateTeamScore(teamPlayers, playerData) {
   const scores = teamPlayers.map(name => {
     const player = playerData[name];
-    if (!player) return { name, score: 0, found: false };
+    if (!player) return { name, score: 0, found: false, rounds: [] };
     return {
       name: player.fullName || name,
       score: player.score,
       madeCut: player.madeCut,
       withdrawn: player.withdrawn,
       position: player.position,
+      rounds: player.rounds,
       found: true
     };
   });
@@ -274,10 +283,13 @@ function renderApp(playerData) {
         <div class="players-panel" id="panel-${id}">
           ${team.scores.map(p => {
             const isCounting = countingNames.includes(p.name);
+            const roundsHtml = p.rounds && p.rounds.length > 0
+              ? p.rounds.map((r, i) => `<span class="round-score">R${i+1}: ${r}</span>`).join('')
+              : '';
             return `
             <div class="player-row ${isCounting ? 'counting' : 'not-counting'} ${p.madeCut === false ? 'cut' : ''}">
               <span class="player-name">${p.name}</span>
-              <span class="player-status">${p.position || '-'}</span>
+              <div class="player-rounds">${roundsHtml}</div>
               <span class="player-score ${getScoreClass(p.score)}">${formatScore(p.score)}</span>
             </div>
           `}).join('')}
