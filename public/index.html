@@ -29,6 +29,12 @@
       font-size: 1.1em;
       white-space: nowrap;
     }
+    .presented {
+      color: #1a472a;
+      font-size: 0.95em;
+      margin-top: 4px;
+      font-weight: bold;
+    }
     .stats-row {
       display: flex;
       justify-content: center;
@@ -119,13 +125,23 @@
       box-shadow: inset 0 3px 6px rgba(0,0,0,0.08);
     }
     .players-panel.open { display: block; }
+    .round-header {
+      display: flex;
+      padding: 6px 16px 6px 20px;
+      font-size: 0.7em;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid #ccdacc;
+    }
+    .round-header .rh-name { flex: 1; }
+    .round-header .rh-r { width: 36px; text-align: center; }
+    .round-header .rh-tot { width: 40px; text-align: right; }
     .player-row {
       display: flex;
-      justify-content: space-between;
       align-items: center;
       padding: 10px 16px 10px 20px;
       border-bottom: 1px solid #ccdacc;
-      gap: 8px;
     }
     .player-row:last-child { border-bottom: none; }
     .player-row.counting { background: rgba(255,255,255,0.6); }
@@ -133,29 +149,28 @@
       color: #1a1a1a;
       font-weight: bold;
     }
-    .player-row.counting .player-status { color: #555; }
     .player-row.not-counting {
       opacity: 0.5;
       filter: blur(0.3px);
     }
     .player-row.not-counting .player-name { color: #666; }
-    .player-row.not-counting .player-score { color: #aaa !important; }
     .player-name { font-size: 0.9em; flex: 1; }
-    .player-rounds {
-      display: flex;
-      gap: 6px;
-      font-size: 0.75em;
-      color: #666;
-    }
-    .round-score {
-      background: rgba(0,0,0,0.06);
-      border-radius: 4px;
-      padding: 2px 5px;
-      min-width: 28px;
+    .round-cell {
+      width: 36px;
       text-align: center;
+      font-size: 0.78em;
+      color: #555;
+      background: rgba(0,0,0,0.05);
+      border-radius: 4px;
+      padding: 2px 0;
+      margin-right: 4px;
     }
-    .player-score { font-weight: bold; font-size: 0.9em; min-width: 32px; text-align: right; }
-    .player-status { font-size: 0.75em; color: #aaa; min-width: 28px; text-align: center; }
+    .player-score {
+      width: 40px;
+      text-align: right;
+      font-weight: bold;
+      font-size: 0.9em;
+    }
     .cut { opacity: 0.4; text-decoration: line-through; }
     .loading { text-align: center; padding: 50px; color: #666; }
     .error { text-align: center; padding: 50px; color: #cc3333; }
@@ -165,6 +180,7 @@
 <div class="header">
   <img class="logo" src="/IMG_3970.png" alt="Masters" onerror="this.style.display='none'"/>
   <h1>Masters 2026 — Pardie</h1>
+  <div class="presented">Presented by Woods</div>
   <div class="stats-row">
     <div class="stat">
       <span class="stat-label">Teams</span>
@@ -172,7 +188,7 @@
     </div>
     <div class="stat">
       <span class="stat-label">Prize</span>
-      <span class="stat-value">🍾 Magnum</span>
+      <span class="stat-value">Champagne Magnum 🍾</span>
     </div>
   </div>
   <div class="last-updated" id="lastUpdated">Loading...</div>
@@ -194,6 +210,7 @@ const TEAMS = {
   'Tom': ['Schauffele', 'Bhatia', 'Høygaard', 'Echavaria', 'Hovland']
 };
 const CUT_SCORE = 10;
+const MAX_ROUNDS = 4;
 function formatScore(score) {
   if (score === 999) return 'WD';
   if (score === 0) return 'E';
@@ -268,6 +285,11 @@ function renderApp(playerData) {
     const countingNames = team.counting.map(p => p.name);
     const id = 'team' + idx;
     const isFirst = idx === 0;
+
+    const maxR = Math.max(...team.scores.map(p => p.rounds?.length || 0), 1);
+    const roundHeaders = Array.from({length: maxR}, (_, i) =>
+      `<span class="rh-r">R${i+1}</span>`).join('');
+
     html += `
       <div class="team-card ${isFirst ? 'leader' : ''}">
         <div class="team-header" onclick="toggleTeam('${id}')">
@@ -281,15 +303,19 @@ function renderApp(playerData) {
           </div>
         </div>
         <div class="players-panel" id="panel-${id}">
+          <div class="round-header">
+            <span class="rh-name"></span>
+            ${roundHeaders}
+            <span class="rh-tot">Tot</span>
+          </div>
           ${team.scores.map(p => {
             const isCounting = countingNames.includes(p.name);
-            const roundsHtml = p.rounds && p.rounds.length > 0
-              ? p.rounds.map((r, i) => `<span class="round-score">R${i+1}: ${r}</span>`).join('')
-              : '';
+            const roundCells = Array.from({length: maxR}, (_, i) =>
+              `<span class="round-cell">${p.rounds?.[i] || '-'}</span>`).join('');
             return `
             <div class="player-row ${isCounting ? 'counting' : 'not-counting'} ${p.madeCut === false ? 'cut' : ''}">
               <span class="player-name">${p.name}</span>
-              <div class="player-rounds">${roundsHtml}</div>
+              ${roundCells}
               <span class="player-score ${getScoreClass(p.score)}">${formatScore(p.score)}</span>
             </div>
           `}).join('')}
