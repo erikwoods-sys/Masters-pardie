@@ -135,8 +135,8 @@
       border-bottom: 1px solid #ccdacc;
     }
     .round-header .rh-name { flex: 1; }
-    .round-header .rh-r { width: 36px; text-align: center; }
-    .round-header .rh-tot { width: 40px; text-align: right; }
+    .round-header .rh-r { width: 40px; text-align: center; }
+    .round-header .rh-tot { width: 44px; text-align: right; }
     .player-row {
       display: flex;
       align-items: center;
@@ -153,10 +153,27 @@
       opacity: 0.5;
       filter: blur(0.3px);
     }
-    .player-row.not-counting .player-name { color: #666; }
     .player-name { font-size: 0.9em; flex: 1; }
+    .cut-badge {
+      font-size: 0.65em;
+      color: #fff;
+      background: #aaa;
+      border-radius: 3px;
+      padding: 1px 4px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .wd-badge {
+      font-size: 0.65em;
+      color: #fff;
+      background: #cc3333;
+      border-radius: 3px;
+      padding: 1px 4px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
     .round-cell {
-      width: 36px;
+      width: 40px;
       text-align: center;
       font-size: 0.78em;
       color: #555;
@@ -165,13 +182,16 @@
       padding: 2px 0;
       margin-right: 4px;
     }
+    .round-cell.penalty {
+      color: #cc3333;
+      background: rgba(204,51,51,0.08);
+    }
     .player-score {
-      width: 40px;
+      width: 44px;
       text-align: right;
       font-weight: bold;
       font-size: 0.9em;
     }
-    .cut { opacity: 0.4; text-decoration: line-through; }
     .loading { text-align: center; padding: 50px; color: #666; }
     .error { text-align: center; padding: 50px; color: #cc3333; }
   </style>
@@ -209,13 +229,21 @@ const TEAMS = {
   'Jørgen': ['Scheffler', 'Koepka', 'Bradley', 'Reitan', 'Hovland'],
   'Tom': ['Schauffele', 'Bhatia', 'Højgaard', 'Echavarria', 'Hovland']
 };
-const CUT_SCORE = 10;
-const MAX_ROUNDS = 4;
+
+const CUT_LINE = 5;
+const R3_START = new Date('2026-04-11T15:30:00+02:00');
+const R4_START = new Date('2026-04-12T15:30:00+02:00');
+
 function formatScore(score) {
   if (score === 999) return 'WD';
   if (score === 0) return 'E';
   if (score > 0) return '+' + score;
   return score.toString();
+}
+function formatHalf(val) {
+  if (val === 0) return 'E';
+  if (val > 0) return '+' + val;
+  return val.toString();
 }
 function getScoreClass(score) {
   if (score < 0) return 'score-negative';
@@ -230,18 +258,43 @@ function processPlayerData(espnData) {
       const name = comp.athlete?.displayName || '';
       const lastName = name.split(' ').slice(-1)[0];
       const status = comp.status?.type?.name || '';
-      const score = parseInt(comp.score) || 0;
-      const madeCut = !status.includes('CUT');
-      const rounds = comp.linescores?.map(r => r.displayValue || '-') || [];
+      const withdrawn = status === 'STATUS_WITHDRAWN';
+      const espnRounds = comp.linescores?.map(r => r.displayValue || '-') || [];
+
+      const r1 = parseInt(espnRounds[0]) || 0;
+      const r2 = parseInt(espnRounds[1]) || 0;
+      const r1r2total = r1 + r2;
+      const missedCut = !withdrawn && r1r2total >= CUT_LINE;
+
+      let rounds = [...espnRounds];
+      let totalScore = parseInt(comp.score) || 0;
+
+      if (missedCut) {
+        const half = r1r2total / 2;
+        const now = new Date();
+        const r3val = now >= R3_START ? half : null;
+        const r4val = now >= R4_START ? half : null;
+        rounds = [
+          espnRounds[0] || '-',
+          espnRounds[1] || '-',
+          r3val !== null ? formatHalf(r3val) : '-',
+          r4val !== null ? formatHalf(r4val) : '-'
+        ];
+        totalScore = Math.round(
+          r1r2total
+          + (r3val !== null ? r3val : 0)
+          + (r4val !== null ? r4val : 0)
+        );
+      }
+
       players[lastName] = {
         fullName: name,
-        score: madeCut ? score : CUT_SCORE * 2,
-        madeCut,
-        withdrawn: status.includes('WD'),
+        score: withdrawn ? 999 : totalScore,
+        missedCut,
+        withdrawn,
         position: comp.status?.position?.displayName || '-',
         rounds
       };
-      if (players[lastName].withdrawn) players[lastName].score = 999;
     });
   } catch(e) {
     console.error('Error processing player data:', e);
@@ -255,7 +308,7 @@ function calculateTeamScore(teamPlayers, playerData) {
     return {
       name: player.fullName || name,
       score: player.score,
-      madeCut: player.madeCut,
+      missedCut: player.missedCut,
       withdrawn: player.withdrawn,
       position: player.position,
       rounds: player.rounds,
@@ -285,8 +338,7 @@ function renderApp(playerData) {
     const countingNames = team.counting.map(p => p.name);
     const id = 'team' + idx;
     const isFirst = idx === 0;
-
-    const maxR = Math.max(...team.scores.map(p => p.rounds?.length || 0), 1);
+    const maxR = Math.max(...team.scores.map(p => p.rounds?.length || 0), 2);
     const roundHeaders = Array.from({length: maxR}, (_, i) =>
       `<span class="rh-r">R${i+1}</span>`).join('');
 
@@ -310,11 +362,16 @@ function renderApp(playerData) {
           </div>
           ${team.scores.map(p => {
             const isCounting = countingNames.includes(p.name);
-            const roundCells = Array.from({length: maxR}, (_, i) =>
-              `<span class="round-cell">${p.rounds?.[i] || '-'}</span>`).join('');
+            const roundCells = Array.from({length: maxR}, (_, i) => {
+              const val = p.rounds?.[i] || '-';
+              const isPenalty = p.missedCut && i >= 2 && val !== '-';
+              return `<span class="round-cell ${isPenalty ? 'penalty' : ''}">${val}</span>`;
+            }).join('');
+            const cutBadge = p.missedCut ? '<span class="cut-badge">CUT</span>' : '';
+            const wdBadge = p.withdrawn ? '<span class="wd-badge">WD</span>' : '';
             return `
-            <div class="player-row ${isCounting ? 'counting' : 'not-counting'} ${p.madeCut === false ? 'cut' : ''}">
-              <span class="player-name">${p.name}</span>
+            <div class="player-row ${isCounting ? 'counting' : 'not-counting'}">
+              <span class="player-name">${cutBadge}${wdBadge}${p.name}</span>
               ${roundCells}
               <span class="player-score ${getScoreClass(p.score)}">${formatScore(p.score)}</span>
             </div>
